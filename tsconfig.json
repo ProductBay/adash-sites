@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "lib": ["dom", "dom.iterable", "es2022"],
+    "module": "esnext", "moduleResolution": "bundler", "jsx": "preserve",
+    "strict": true, "noEmit": true, "skipLibCheck": true,
+    "esModuleInterop": true, "resolveJsonModule": true, "isolatedModules": true,
+    "paths": { "@adash/site-core": ["./packages/site-core/src/index.ts"], "@adash/site-config": ["./packages/site-config/src/index.ts"], "@adash/site-auth": ["./packages/site-auth/src/index.ts"], "@adash/site-templates": ["./packages/site-templates/src/index.ts"], "@adash/site-themes": ["./packages/site-themes/src/index.ts"], "@adash/site-components": ["./packages/site-components/src/index.tsx"] }
+  },
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "prisma/**/*.ts", "*.ts"],
+  "exclude": ["node_modules"]
+}

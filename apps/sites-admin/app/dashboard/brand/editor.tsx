@@ -1,0 +1,15 @@
+"use client";
+import { useState, type CSSProperties } from "react";
+import { themeKeys, themePresets, resolveTheme, themeVariables, type ThemeKey } from "@adash/site-themes";
+import { saveBrand } from "../../actions";
+
+export function BrandEditor({ themeKey: initialTheme, primary, secondary, accent }: { themeKey: string; primary: string; secondary: string; accent: string; logoUrl?: string }) {
+  const [themeKey, setThemeKey] = useState(initialTheme);
+  const [primaryColor, setPrimary] = useState(primary);
+  const [secondaryColor, setSecondary] = useState(secondary);
+  const [accentColor, setAccent] = useState(accent);
+  const theme = resolveTheme(themeKey, { primaryColor, secondaryColor, accentColor });
+  const key = themeKey as ThemeKey;
+  const rejected = theme && ((primaryColor && theme.primary.toLowerCase() !== primaryColor.toLowerCase()) || (secondaryColor && theme.secondary.toLowerCase() !== secondaryColor.toLowerCase()) || (accentColor && theme.accent.toLowerCase() !== accentColor.toLowerCase()));
+  return <div className="split"><form className="panel" action={saveBrand}><h2>Your look</h2><label>Theme preset<select name="themeKey" value={themeKey} onChange={event => { const next = event.target.value as ThemeKey; setThemeKey(next); setPrimary(themePresets[next].primary); setSecondary(themePresets[next].secondary); setAccent(themePresets[next].accent); }}>{themeKeys.map(item => <option key={item} value={item}>{themePresets[item].name}</option>)}</select></label><label>Primary color<input name="primaryColor" value={primaryColor} onChange={event => setPrimary(event.target.value)} pattern="#[A-Fa-f0-9]{6}" /></label><label>Secondary color<input name="secondaryColor" value={secondaryColor} onChange={event => setSecondary(event.target.value)} pattern="#[A-Fa-f0-9]{6}" /></label><label>Accent color<input name="accentColor" value={accentColor} onChange={event => setAccent(event.target.value)} pattern="#[A-Fa-f0-9]{6}" /></label>{rejected && <p role="alert" className="notice">This color reduces text contrast. Choose a stronger contrast.</p>}<p className="hint">Logo and app icon are selected from the media library below.</p><button disabled={Boolean(rejected)}>Save brand</button></form><div className="panel"><h2>Live preview</h2>{theme && <div className="theme-preview" style={themeVariables(theme) as CSSProperties}><p className="eyebrow">{themePresets[key]?.name}</p><h3>Made to feel like you.</h3><p>Representative heading, body copy, and product card.</p><div className="preview-card"><span>Featured</span><h4>Signature product</h4><p>A thoughtful addition to your collection.</p><button type="button">Primary button</button></div></div>}<p className="hint">Public theme changes when you save. Content images and words require publishing.</p></div></div>;
+}

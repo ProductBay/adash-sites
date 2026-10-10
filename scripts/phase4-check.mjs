@@ -1,0 +1,31 @@
+import { readFile } from "node:fs/promises";
+import { PrismaClient } from "@prisma/client";
+const env = await readFile(new URL("../.env", import.meta.url), "utf8");
+const databaseUrl = env.match(/^DATABASE_URL\s*=\s*"?([^"\r\n]+)"?/m)?.[1];
+if (!databaseUrl?.includes("127.0.0.1:55432/adash_sites_dev")) throw new Error("Phase 4 check requires isolated local database");
+process.env.DATABASE_URL = databaseUrl;
+const db = new PrismaClient();
+let failures = 0;
+const check = (label, okay) => { console.log(`${okay ? "PASS" : "FAIL"} ${label}`); if (!okay) failures++; };
+const origin = slug => `http://${slug}.localhost:3000`;
+try {
+  const tenants = await db.tenant.findMany({ where: { slug: { in: ["island-fresh-demo", "harbour-goods-demo"] } }, include: { mediaAssets: true, site: true, business: true, brand: true } });
+  const island = tenants.find(t => t.slug === "island-fresh-demo"), harbour = tenants.find(t => t.slug === "harbour-goods-demo");
+  if (!island || !harbour) throw new Error("Seed tenants missing");
+  const manifests = await Promise.all([island, harbour].map(t => fetch(`${origin(t.slug)}/manifest.webmanifest`).then(r => r.json())));
+  check("tenant manifest names differ", manifests[0].name === island.business?.displayName && manifests[1].name === harbour.business?.displayName && manifests[0].name !== manifests[1].name);
+  check("tenant manifest colors differ", manifests[0].theme_color !== manifests[1].theme_color);
+  check("tenant-safe manifest start and icons", manifests.every(m => m.start_url === "/" && m.scope === "/" && m.display === "standalone" && m.icons.some(i => i.sizes === "192x192") && m.icons.some(i => i.sizes === "512x512")));
+  check("unknown host manifest rejected", (await fetch("http://unknown.localhost:3000/manifest.webmanifest")).status === 404);
+  check("tenant icons resolve", (await fetch(`${origin(island.slug)}/app-icon/192`)).headers.get("content-type") === "image/png" && (await fetch(`${origin(harbour.slug)}/app-icon/512`)).status === 200);
+  check("service worker and offline shell", (await fetch(`${origin(island.slug)}/sw.js`)).status === 200 && (await fetch(`${origin(island.slug)}/offline`)).status === 200);
+  check("media seeded per tenant", island.mediaAssets.length >= 3 && harbour.mediaAssets.length >= 3 && island.mediaAssets.every(a => a.tenantId === island.id) && harbour.mediaAssets.every(a => a.tenantId === harbour.id));
+  check("cross-tenant public media rejected", (await fetch(`${origin(harbour.slug)}/media/${island.mediaAssets[0].id}`)).status === 404);
+  check("unattached public media private", (await fetch(`${origin(island.slug)}/media/${island.mediaAssets[0].id}`)).status === 404);
+  check("cross-tenant admin media rejected", (await fetch(`http://${harbour.slug}.localhost:3001/media/${island.mediaAssets[0].id}`)).status === 404);
+  check("private preview requires session", (await fetch(`http://${island.slug}.localhost:3001/dashboard/content/preview`, { redirect: "manual" })).status === 307);
+  check("private publish requires session", (await fetch(`http://${island.slug}.localhost:3001/dashboard/publish`, { redirect: "manual" })).status === 307);
+  check("distinct authoritative WhatsApp numbers", island.business?.whatsapp?.startsWith("+1") && harbour.business?.whatsapp?.startsWith("+592"));
+  check("draft and publication version separate", island.site?.publicationVersion >= 0 && harbour.site?.publicationVersion >= 0);
+} finally { await db.$disconnect(); }
+if (failures) process.exitCode = 1;

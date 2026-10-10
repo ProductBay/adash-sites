@@ -1,0 +1,416 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum DomainStatus {
+  PENDING
+  VERIFIED
+  DISABLED
+}
+
+model Tenant {
+  id            String             @id @default(cuid())
+  slug          String             @unique
+  name          String
+  legalName     String?
+  status        TenantStatus       @default(DRAFT)
+  countryCode   String             @db.VarChar(2)
+  currencyCode  String             @db.VarChar(3)
+  locale        String
+  timezone      String
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  domains       TenantDomain[]
+  business      BusinessProfile?
+  brand         BrandConfiguration?
+  site          SiteConfiguration?
+  features      TenantFeature[]
+  memberships   TenantMembership[]
+  products      Product[]
+  categories    ProductCategory[]
+  locations     BusinessLocation[]
+  auditEvents   AuditEvent[]
+  mediaAssets   MediaAsset[]
+  publications  SitePublication[]
+  commercialControl TenantCommercialControl?
+  controlRequests ControlRequest[]
+}
+
+model TenantCommercialControl {
+  id String @id @default(cuid())
+  tenantId String @unique
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  externalCustomerId String
+  externalLicenceId String @unique
+  planKey String
+  commercialStatus String
+  gracePeriodEndsAt DateTime?
+  entitlements Json
+  lastRequestId String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  @@unique([externalCustomerId, externalLicenceId])
+}
+
+model ControlRequest {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  requestId String @unique
+  bodyDigest String
+  responseJson Json
+  createdAt DateTime @default(now())
+  @@index([tenantId, createdAt])
+}
+
+model TenantDomain {
+  id         String       @id @default(cuid())
+  tenantId   String
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  hostname   String       @unique
+  isPrimary  Boolean      @default(false)
+  status     DomainStatus @default(PENDING)
+  verifiedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  @@index([tenantId])
+}
+
+model BusinessProfile {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  displayName   String
+  shortName     String?
+  description   String?
+  email         String?
+  phone         String?
+  whatsapp      String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  region        String?
+  postalCode    String?
+  countryCode   String   @db.VarChar(2)
+  websiteUrl    String?
+  instagramUrl  String?
+  facebookUrl   String?
+  tiktokUrl     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model BrandConfiguration {
+  id              String   @id @default(cuid())
+  tenantId        String   @unique
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  logoUrl         String?
+  iconUrl         String?
+  logoMediaId     String?
+  iconMediaId     String?
+  primaryColor    String?
+  secondaryColor  String?
+  accentColor     String?
+  backgroundColor String?
+  headingFont     String?
+  bodyFont        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SiteConfiguration {
+  id              String    @id @default(cuid())
+  tenantId        String    @unique
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  siteTitle       String?
+  siteDescription String?
+  templateKey     String
+  themeKey        String
+  homeSections    Json?
+  draftSections   Json?
+  publicationVersion Int @default(0)
+  published       Boolean   @default(false)
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum MembershipRole {
+  OWNER
+  MANAGER
+  PRODUCT_MANAGER
+  CONTENT_EDITOR
+  STAFF
+}
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  REVOKED
+}
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+enum AvailabilityStatus {
+  IN_STOCK
+  LOW_STOCK
+  OUT_OF_STOCK
+  PREORDER
+  SEASONAL
+  UNAVAILABLE
+}
+enum InventorySource {
+  BASIC
+  INVENTRA
+}
+enum LocationType {
+  STORE
+  PICKUP
+  OFFICE
+  RETAILER
+  DISTRIBUTOR
+}
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  passwordHash String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships TenantMembership[]
+  sessions AuthSession[]
+  auditEvents AuditEvent[]
+  uploads MediaAsset[]
+  publications SitePublication[]
+}
+
+model AuthSession {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, expiresAt])
+}
+
+model LoginThrottle {
+  emailHash String @id
+  failedCount Int @default(0)
+  lockedUntil DateTime?
+  updatedAt DateTime @updatedAt
+}
+
+model TenantMembership {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role MembershipRole
+  status MembershipStatus @default(INVITED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, userId])
+  @@index([userId, status])
+}
+
+model ProductCategory {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  slug String
+  name String
+  description String?
+  sortOrder Int @default(0)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  products Product[]
+  @@unique([tenantId, slug])
+  @@unique([tenantId, id])
+}
+
+model Product {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  categoryId String?
+  category ProductCategory? @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  slug String
+  name String
+  shortDescription String?
+  description String?
+  status ProductStatus @default(DRAFT)
+  featured Boolean @default(false)
+  seasonal Boolean @default(false)
+  sortOrder Int @default(0)
+  trackQuantity Boolean @default(false)
+  quantityOnHand Int?
+  lowStockThreshold Int?
+  availabilityStatus AvailabilityStatus @default(IN_STOCK)
+  inventorySource InventorySource @default(BASIC)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  publishedAt DateTime?
+  variants ProductVariant[]
+  prices ProductPrice[]
+  images ProductImage[]
+  @@unique([tenantId, slug])
+  @@unique([tenantId, id])
+  @@index([tenantId, status, featured])
+}
+
+model ProductVariant {
+  id String @id @default(cuid())
+  tenantId String
+  productId String
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
+  sku String?
+  name String
+  size String?
+  unit String?
+  active Boolean @default(true)
+  sortOrder Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  prices ProductPrice[]
+  @@unique([tenantId, id])
+  @@unique([tenantId, sku])
+}
+
+model ProductPrice {
+  id String @id @default(cuid())
+  tenantId String
+  productId String
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
+  variantId String?
+  variant ProductVariant? @relation(fields: [tenantId, variantId], references: [tenantId, id])
+  currencyCode String @db.VarChar(3)
+  amountMinor BigInt
+  compareAtMinor BigInt?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([tenantId, productId, active])
+}
+
+model ProductImage {
+  id String @id @default(cuid())
+  tenantId String
+  productId String
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
+  url String
+  mediaAssetId String?
+  altText String
+  sortOrder Int @default(0)
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([tenantId, productId])
+}
+
+model BusinessLocation {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name String
+  type LocationType @default(STORE)
+  addressLine1 String?
+  addressLine2 String?
+  city String?
+  region String?
+  postalCode String?
+  countryCode String @db.VarChar(2)
+  phone String?
+  openingHoursJson Json?
+  active Boolean @default(true)
+  sortOrder Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([tenantId, active, sortOrder])
+}
+
+model AuditEvent {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  actorUserId String?
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  eventType String
+  entityType String
+  entityId String?
+  metadataJson Json?
+  createdAt DateTime @default(now())
+  @@index([tenantId, createdAt])
+}
+
+model TenantFeature {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  featureKey        String
+  enabled           Boolean  @default(false)
+  configurationJson Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@unique([tenantId, featureKey])
+}
+
+enum MediaKind {
+  IMAGE
+  LOGO
+  ICON
+  PRODUCT
+  CONTENT
+}
+
+model MediaAsset {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  uploadedByUserId String?
+  uploadedBy User? @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  kind MediaKind @default(IMAGE)
+  storageKey String @unique
+  mimeType String
+  originalFilename String
+  sizeBytes Int
+  width Int
+  height Int
+  altText String @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, id])
+  @@index([tenantId, createdAt])
+}
+
+model SitePublication {
+  id String @id @default(cuid())
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  publishedByUserId String
+  publishedBy User @relation(fields: [publishedByUserId], references: [id], onDelete: Restrict)
+  version Int
+  sections Json
+  checksum String
+  publishedAt DateTime @default(now())
+  @@unique([tenantId, version])
+  @@index([tenantId, publishedAt])
+}

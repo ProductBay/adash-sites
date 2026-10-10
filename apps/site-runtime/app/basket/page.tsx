@@ -1,0 +1,8 @@
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+import { resolveTenant, createTenantRepository } from "@adash/site-core";
+import { catalogue, formatMinor, inventoryAvailability } from "@adash/site-core/catalogue";
+import { normalizeWhatsApp } from "@adash/site-core/whatsapp";
+import { BasketReview } from "../basket-controls";
+export const dynamic = "force-dynamic";
+export default async function BasketPage() { const tenant = await resolveTenant((await headers()).get("host")); if (!tenant) notFound(); const repo = createTenantRepository(tenant.id); const [business, site, enabled, products] = await Promise.all([repo.business(), repo.site(), repo.hasFeature("whatsapp_ordering"), catalogue(tenant.id).products(true)]); const phone = business?.whatsapp && normalizeWhatsApp(business.whatsapp, tenant.countryCode); if (!site?.published || !enabled || !phone || !business) notFound(); const data = products.filter(p => !p.category || p.category.active).map(p => ({ id: p.id, name: p.name, available: !["OUT_OF_STOCK", "UNAVAILABLE"].includes(inventoryAvailability(p)), price: p.prices.find(price => !price.variantId && price.currencyCode === tenant.currencyCode)?.amountMinor, variants: p.variants.map(v => ({ id: v.id, label: [v.name, v.size].filter(Boolean).join(" ") })) })).map(p => ({ ...p, price: p.price === undefined ? null : formatMinor(p.price, tenant.currencyCode, tenant.locale) })); return <main className="product-detail"><a href="/">← {business.displayName}</a><h1>WhatsApp basket</h1><BasketReview tenantSlug={tenant.slug} businessName={business.displayName} phone={phone} products={data} /></main>; }

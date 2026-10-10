@@ -1,0 +1,40 @@
+import { readFile } from "node:fs/promises";
+import { PrismaClient } from "@prisma/client";
+import { chromium } from "playwright-core";
+const env = await readFile(new URL("../.env", import.meta.url), "utf8");
+const databaseUrl = env.match(/^DATABASE_URL\s*=\s*"?([^"\r\n]+)"?/m)?.[1];
+if (!databaseUrl?.includes("127.0.0.1:55432/adash_sites_dev")) throw new Error("Entitlement check restricted to isolated local database");
+process.env.DATABASE_URL = databaseUrl;
+const db = new PrismaClient();
+const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" });
+const tenant = await db.tenant.findUniqueOrThrow({ where: { slug: "island-fresh-demo" } });
+const keys = ["products", "basic_inventory"];
+const original = await db.tenantFeature.findMany({ where: { tenantId: tenant.id, featureKey: { in: keys } } });
+let failures = 0;
+const record = (name, pass, detail = "") => { console.log(`${pass ? "PASS" : "FAIL"} ${name} ${detail}`); if (!pass) failures++; };
+try {
+  const page = await browser.newPage();
+  const admin = "http://island-fresh-demo.localhost:3001";
+  await page.goto(`${admin}/login`);
+  await page.getByLabel("Email").fill("island-fresh-demo@example.test");
+  await page.getByLabel("Password").fill(process.env.ADASH_DEMO_PASSWORD ?? "DemoOnly-2026!ChangeMe");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(`${admin}/dashboard`);
+  await page.reload();
+  await db.tenantFeature.update({ where: { tenantId_featureKey: { tenantId: tenant.id, featureKey: "products" } }, data: { enabled: false } });
+  const blockedRoute = await page.goto(`${admin}/dashboard/products`);
+  record("products entitlement blocks direct route", blockedRoute?.status() === 404, String(blockedRoute?.status()));
+  await db.tenantFeature.update({ where: { tenantId_featureKey: { tenantId: tenant.id, featureKey: "products" } }, data: { enabled: true } });
+  const product = await db.product.findUniqueOrThrow({ where: { tenantId_slug: { tenantId: tenant.id, slug: "citrus-daybreak" } } });
+  await page.goto(`${admin}/dashboard/products/${product.id}`);
+  await db.tenantFeature.update({ where: { tenantId_featureKey: { tenantId: tenant.id, featureKey: "basic_inventory" } }, data: { enabled: false } });
+  await page.getByLabel("Quantity on hand").fill(String((product.quantityOnHand ?? 0) + 1));
+  const [result] = await Promise.all([page.waitForResponse(r => r.request().method() === "POST" && r.url().includes(`/dashboard/products/${product.id}`)), page.getByRole("button", { name: "Save product" }).click()]);
+  const after = await db.product.findUniqueOrThrow({ where: { id: product.id } });
+  record("basic inventory entitlement blocks mutation", result.status() >= 400 && after.quantityOnHand === product.quantityOnHand, String(result.status()));
+} finally {
+  for (const feature of original) await db.tenantFeature.update({ where: { id: feature.id }, data: { enabled: feature.enabled } });
+  await browser.close();
+  await db.$disconnect();
+}
+if (failures) process.exitCode = 1;

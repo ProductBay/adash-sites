@@ -1,0 +1,36 @@
+import { chromium } from "playwright-core";
+const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" });
+let failures = 0;
+const record = (name, pass) => { console.log(`${pass ? "PASS" : "FAIL"} ${name}`); if (!pass) failures++; };
+try {
+  const page = await browser.newPage();
+  const admin = "http://island-fresh-demo.localhost:3001";
+  const publicUrl = "http://island-fresh-demo.localhost:3000";
+  await page.goto(`${admin}/login`);
+  await page.getByLabel("Email").fill("island-fresh-demo@example.test");
+  await page.getByLabel("Password").fill(process.env.ADASH_DEMO_PASSWORD ?? "DemoOnly-2026!ChangeMe");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(`${admin}/dashboard`);
+  await page.goto(`${admin}/dashboard/content`);
+  await page.waitForLoadState("networkidle");
+  const original = await page.getByLabel("Hero headline").inputValue();
+  const changed = "A Phase Three preview headline.";
+  await page.getByLabel("Hero headline").fill(changed);
+  await Promise.all([page.waitForResponse(r => r.request().method() === "POST" && r.url().includes("/dashboard/content")), page.getByRole("button", { name: "Save draft" }).click()]);
+  await page.goto(publicUrl);
+  record("draft is not public", await page.getByRole("heading", { name: original }).count() > 0);
+  await page.goto(`${admin}/dashboard/content/preview`);
+  record("private draft preview", await page.getByRole("heading", { name: changed }).count() > 0);
+  await page.goto(`${admin}/dashboard/content`);
+  await Promise.all([page.waitForResponse(r => r.request().method() === "POST" && r.url().includes("/dashboard/content")), page.getByRole("button", { name: "Publish draft" }).click()]);
+  await page.goto(publicUrl);
+  record("published content is public", await page.getByRole("heading", { name: changed }).count() > 0);
+  await page.goto(`${admin}/dashboard/content`);
+  await page.getByLabel("Hero headline").fill(original);
+  await Promise.all([page.waitForResponse(r => r.request().method() === "POST" && r.url().includes("/dashboard/content")), page.getByRole("button", { name: "Save draft" }).click()]);
+  await page.reload();
+  await Promise.all([page.waitForResponse(r => r.request().method() === "POST" && r.url().includes("/dashboard/content")), page.getByRole("button", { name: "Publish draft" }).click()]);
+  await page.goto(publicUrl);
+  record("original content restored", await page.getByRole("heading", { name: original }).count() > 0);
+} finally { await browser.close(); }
+if (failures) process.exitCode = 1;

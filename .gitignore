@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.env
+.env.local
+*.tsbuildinfo
+.local-postgres/
+.browser-preview/
+.local-media/
+
+# Never commit environment secrets
+.env.*
+!.env.example
