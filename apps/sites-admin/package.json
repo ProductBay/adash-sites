@@ -1,1 +1,9 @@
-{"name":"@adash/sites-admin","private":true,"scripts":{"dev":"next dev -p 3001","build":"next build","start":"next start -p 3001"}}
+{
+  "name": "@adash/sites-admin",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start"
+  }
+}

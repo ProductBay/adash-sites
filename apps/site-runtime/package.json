@@ -1,1 +1,9 @@
-{"name":"@adash/site-runtime","private":true,"scripts":{"dev":"next dev -p 3000","build":"next build","start":"next start -p 3000"}}
+{
+  "name": "@adash/site-runtime",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start"
+  }
+}
