@@ -63,6 +63,63 @@ export async function tenantPrincipal(token: string | undefined, tenantId: strin
   if (!membership || membership.status !== MembershipStatus.ACTIVE) return null;
   return { ...identity, tenantId, role: membership.role };
 }
+export const PASSWORD_RESET_GENERIC_MESSAGE = "If an account exists for that email, a password reset link has been sent.";
+export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const PASSWORD_RESET_THROTTLE_MS = 60 * 1000;
+const resetTokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
+
+export type PasswordResetMailer = (input: { to: string; resetUrl: string }) => Promise<void>;
+
+export async function requestPasswordReset(input: { tenantId: string; email: string; origin: string; sendEmail: PasswordResetMailer }, db: PrismaClient = prisma, now = new Date()) {
+  const accepted = { message: PASSWORD_RESET_GENERIC_MESSAGE } as const;
+  if (input.email.length > 254) return accepted;
+  const email = input.email.trim().toLowerCase();
+  const membership = await db.tenantMembership.findFirst({ where: { tenantId: input.tenantId, status: MembershipStatus.ACTIVE, user: { email } }, select: { user: { select: { id: true, email: true } } } });
+  if (!membership) return accepted;
+  const recent = await db.passwordResetToken.findFirst({ where: { tenantId: input.tenantId, userId: membership.user.id, createdAt: { gte: new Date(now.getTime() - PASSWORD_RESET_THROTTLE_MS) } }, select: { id: true } });
+  if (recent) return accepted;
+
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = resetTokenHash(token);
+  const created = await db.$transaction(async tx => {
+    await tx.passwordResetToken.deleteMany({ where: { tenantId: input.tenantId, userId: membership.user.id, usedAt: null } });
+    return tx.passwordResetToken.create({ data: { tenantId: input.tenantId, userId: membership.user.id, tokenHash, expiresAt: new Date(now.getTime() + PASSWORD_RESET_TTL_MS) }, select: { id: true } });
+  });
+  try {
+    const resetUrl = new URL("/reset-password", input.origin);
+    resetUrl.searchParams.set("token", token);
+    await input.sendEmail({ to: membership.user.email, resetUrl: resetUrl.toString() });
+  } catch {
+    await db.passwordResetToken.deleteMany({ where: { id: created.id, usedAt: null } });
+    console.error("Password reset email delivery failed");
+  }
+  return accepted;
+}
+
+export type ResetPasswordResult = { success: true } | { success: false; error: "invalid" | "expired" | "used" | "mismatch" | "weak" };
+
+export async function resetPassword(input: { tenantId: string; token: string; password: string; confirmPassword: string }, db: PrismaClient = prisma, now = new Date()): Promise<ResetPasswordResult> {
+  if (input.password !== input.confirmPassword) return { success: false, error: "mismatch" };
+  if (!/^[A-Za-z0-9_-]{43}$/.test(input.token)) return { success: false, error: "invalid" };
+  if (input.password.length < 12 || input.password.length > 256) return { success: false, error: "weak" };
+  const record = await db.passwordResetToken.findUnique({ where: { tokenHash: resetTokenHash(input.token) }, include: { user: { select: { email: true } } } });
+  if (!record || record.tenantId !== input.tenantId) return { success: false, error: "invalid" };
+  if (record.usedAt) return { success: false, error: "used" };
+  if (record.expiresAt <= now) return { success: false, error: "expired" };
+  const passwordHash = hashPassword(input.password);
+  const emailHash = createHash("sha256").update(record.user.email.trim().toLowerCase()).digest("hex");
+  const completed = await db.$transaction(async tx => {
+    const claimed = await tx.passwordResetToken.updateMany({ where: { id: record.id, tenantId: input.tenantId, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now } });
+    if (claimed.count !== 1) return false;
+    await tx.user.update({ where: { id: record.userId }, data: { passwordHash } });
+    await tx.passwordResetToken.updateMany({ where: { userId: record.userId, usedAt: null }, data: { usedAt: now } });
+    await tx.authSession.updateMany({ where: { userId: record.userId, revokedAt: null }, data: { revokedAt: now } });
+    await tx.loginThrottle.deleteMany({ where: { emailHash } });
+    await tx.auditEvent.create({ data: { tenantId: input.tenantId, actorUserId: record.userId, eventType: "auth.password_reset", entityType: "User", entityId: record.userId } });
+    return true;
+  });
+  return completed ? { success: true } : { success: false, error: "used" };
+}
 export type Principal = NonNullable<Awaited<ReturnType<typeof tenantPrincipal>>>;
 export function requirePermission(principal: Principal | null, tenantId: string, permission: Permission): asserts principal is Principal {
   if (!principal || principal.tenantId !== tenantId || !can(principal.role, permission)) throw new Error("Forbidden");

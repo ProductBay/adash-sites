@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 vi.mock("server-only", () => ({}));
-import { MAX_UPLOAD_BYTES, optimizeUpload } from "./media";
+import { localStorage, MAX_UPLOAD_BYTES, newStorageKey, optimizeUpload } from "./media";
 
 describe("secure image upload parsing", () => {
   it("rejects fake extension, HTML, JavaScript, corrupt image, oversized input, unsupported MIME and SVG", async () => {
@@ -25,5 +25,16 @@ describe("secure image upload parsing", () => {
       expect(result.height).toBe(24);
       expect((await sharp(result.body).metadata()).format).toBe("webp");
     }
+  });
+  it("reports whether a local media object is available without reading its contents", async () => {
+    const key = newStorageKey("media-storage-test");
+    expect(await localStorage.exists(key)).toBe(false);
+    await localStorage.put(key, Buffer.from("test object"));
+    try {
+      expect(await localStorage.exists(key)).toBe(true);
+    } finally {
+      await localStorage.delete(key);
+    }
+    expect(await localStorage.exists(key)).toBe(false);
   });
 });

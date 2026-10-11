@@ -1,14 +1,15 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { prisma } from "./index";
 
-export interface StorageAdapter {
+export interface MediaStorage {
   put(key: string, body: Buffer): Promise<void>;
   get(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
+  exists(key: string): Promise<boolean>;
 }
 
 const cwd = process.cwd();
@@ -19,10 +20,11 @@ function safePath(key: string) {
   if (!resolved.startsWith(root + path.sep)) throw new Error("Invalid storage key");
   return resolved;
 }
-export const localStorage: StorageAdapter = {
+export const localStorage: MediaStorage = {
   async put(key, body) { const target = safePath(key); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, body, { flag: "wx" }); },
   get(key) { return readFile(safePath(key)); },
-  delete(key) { return unlink(safePath(key)); }
+  delete(key) { return unlink(safePath(key)); },
+  async exists(key) { try { await access(safePath(key)); return true; } catch { return false; } }
 };
 
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
