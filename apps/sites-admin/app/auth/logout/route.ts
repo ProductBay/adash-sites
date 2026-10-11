@@ -3,7 +3,9 @@ import { type NextRequest, NextResponse } from "next/server";
 import { validatedOrigin } from "../../../lib/trusted-origin";
 
 export async function POST(request: NextRequest) {
-  const origin = validatedOrigin({ host: request.headers.get("host"), origin: request.headers.get("origin"), forwardedProto: request.headers.get("x-forwarded-proto"), production: process.env.NODE_ENV === "production" });
+  const requestOrigin = request.headers.get("origin");
+  if (!requestOrigin) return new NextResponse("Invalid request", { status: 400 });
+  const origin = validatedOrigin({ host: request.headers.get("host"), origin: requestOrigin, forwardedProto: request.headers.get("x-forwarded-proto"), production: process.env.NODE_ENV === "production" });
   if (!origin) return new NextResponse("Invalid request", { status: 400 });
 
   await revokeSession(request.cookies.get(SESSION_COOKIE)?.value);

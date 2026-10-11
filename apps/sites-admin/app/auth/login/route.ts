@@ -9,11 +9,14 @@ function redirectTo(origin: string, path: string) {
 
 export async function POST(request: NextRequest) {
   const host = request.headers.get("host");
-  const origin = validatedOrigin({ host, origin: request.headers.get("origin"), forwardedProto: request.headers.get("x-forwarded-proto"), production: process.env.NODE_ENV === "production" });
+  const requestOrigin = request.headers.get("origin");
+  if (!requestOrigin) return new NextResponse("Invalid request", { status: 400 });
+  const origin = validatedOrigin({ host, origin: requestOrigin, forwardedProto: request.headers.get("x-forwarded-proto"), production: process.env.NODE_ENV === "production" });
   const tenant = origin && await resolveTenant(host, undefined, true);
   if (!origin || !tenant) return new NextResponse("Invalid request", { status: 400 });
 
-  const form = await request.formData();
+  let form: FormData;
+  try { form = await request.formData(); } catch { return new NextResponse("Invalid request", { status: 400 }); }
   const token = await signIn(String(form.get("email") ?? ""), String(form.get("password") ?? ""));
   if (!token) return redirectTo(origin, "/login?error=credentials");
 
