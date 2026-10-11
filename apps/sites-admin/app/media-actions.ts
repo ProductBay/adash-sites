@@ -94,9 +94,11 @@ export async function updateProductImage(form: FormData) {
   await audit(tenant.id, principal.userId, "product.image_updated", "ProductImage", id);
   revalidatePath(`/dashboard/products/${productId}`);
 }
-export async function setBrandMedia(form: FormData) {
-  const { tenant, principal } = await secure("brand.update");
+export type BrandMediaState = { success?: string; error?: string };
+export async function setBrandMedia(_state: BrandMediaState, form: FormData): Promise<BrandMediaState> {
   const slot = field(form, "slot");
+  try {
+  const { tenant, principal } = await secure("brand.update");
   if (slot !== "logo" && slot !== "icon") throw new Error("Invalid slot");
   const id = field(form, "mediaAssetId");
   const asset = id ? await prisma.mediaAsset.findFirst({ where: { tenantId: tenant.id, id } }) : null;
@@ -104,4 +106,8 @@ export async function setBrandMedia(form: FormData) {
   await prisma.brandConfiguration.update({ where: { tenantId: tenant.id }, data: slot === "logo" ? { logoMediaId: asset?.id ?? null, logoUrl: asset ? mediaUrl(asset.id) : null } : { iconMediaId: asset?.id ?? null, iconUrl: asset ? mediaUrl(asset.id) : null } });
   await audit(tenant.id, principal.userId, "brand.media_changed", "BrandConfiguration", undefined, { slot, mediaAssetId: asset?.id ?? null });
   revalidatePath("/dashboard/brand");
+  return { success: slot === "logo" ? "Logo saved successfully." : "App icon saved successfully." };
+  } catch {
+    return { error: slot === "logo" ? "Unable to save logo. Please try again." : "Unable to save app icon. Please try again." };
+  }
 }
