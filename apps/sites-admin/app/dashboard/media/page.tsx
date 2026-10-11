@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { prisma } from "@adash/site-core";
-import { localStorage, mediaReferences } from "@adash/site-core/media";
+import { mediaStorage, mediaReferences } from "@adash/site-core/media";
 import { dashboardContext } from "../../context";
 import { deleteMedia, updateMediaAlt } from "../../media-actions";
 import { AdminHelpPanel } from "../help";
@@ -11,7 +11,7 @@ export default async function MediaLibrary() {
   const assets = await prisma.mediaAsset.findMany({ where: { tenantId: tenant.id }, orderBy: { createdAt: "desc" }, take: 100 });
   const [references, availability] = await Promise.all([
     Promise.all(assets.map(asset => mediaReferences(tenant.id, asset.id))),
-    Promise.all(assets.map(asset => localStorage.exists(asset.storageKey)))
+    Promise.all(assets.map(asset => mediaStorage.exists(asset.storageKey).catch(() => false)))
   ]);
   return <main><p className="eyebrow">Your assets</p><h1>Media library</h1><p>Upload images once, then select them for products and branding. Images are optimized to WebP.</p><AdminHelpPanel section="media" />
     <UploadMediaForm />

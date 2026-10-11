@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import sharp from "sharp";
 import { resolveTenant, createTenantRepository, prisma } from "@adash/site-core";
-import { localStorage } from "@adash/site-core/media";
+import { mediaStorage } from "@adash/site-core/media";
 import { resolveTheme } from "@adash/site-themes";
 export const dynamic = "force-dynamic";
 export async function GET(_request: Request, { params }: { params: Promise<{ size: string }> }) {
@@ -15,7 +15,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ siz
   let image: Buffer | null = null;
   if (brand?.iconMediaId) {
     const asset = await prisma.mediaAsset.findFirst({ where: { id: brand.iconMediaId, tenantId: tenant.id } });
-    if (asset) image = await localStorage.get(asset.storageKey).catch(() => null);
+    if (asset) image = await mediaStorage.get(asset.storageKey).catch(() => null);
   }
   const theme = resolveTheme(site.themeKey, brand);
   const color = theme?.primary ?? "#202923";

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import { MediaKind } from "@prisma/client";
 import { prisma } from "@adash/site-core";
-import { localStorage, MediaUploadError, mediaReferences, mediaUrl, newStorageKey, optimizeUpload } from "@adash/site-core/media";
+import { mediaStorage, MediaUploadError, mediaReferences, mediaUrl, newStorageKey, optimizeUpload, putWithRollback } from "@adash/site-core/media";
 import { dashboardContext as context, audit } from "./context";
 
 async function secure(permission: "brand.update" | "product.update" | "content.update" | "media.manage") {
@@ -24,11 +24,10 @@ export async function uploadMedia(_state: UploadMediaState, form: FormData): Pro
     const processed = await optimizeUpload(Buffer.from(await file.arrayBuffer()), file.type);
     const kind = Object.values(MediaKind).includes(field(form, "kind") as MediaKind) ? field(form, "kind") as MediaKind : MediaKind.IMAGE;
     const storageKey = newStorageKey(tenant.id);
-    await localStorage.put(storageKey, processed.body);
-    try {
+    await putWithRollback(mediaStorage, storageKey, processed.body, async () => {
       const asset = await prisma.mediaAsset.create({ data: { tenantId: tenant.id, uploadedByUserId: principal.userId, kind, storageKey, mimeType: processed.mimeType, originalFilename: file.name.replace(/[\\/\x00-\x1f]/g, "_").slice(0, 180), sizeBytes: processed.body.length, width: processed.width, height: processed.height, altText: field(form, "altText").slice(0, 180) } });
-      await audit(tenant.id, principal.userId, "media.uploaded", "MediaAsset", asset.id);
-    } catch (error) { await localStorage.delete(storageKey); throw error; }
+      return asset;
+    }).then(asset => audit(tenant.id, principal.userId, "media.uploaded", "MediaAsset", asset.id));
     revalidatePath("/dashboard/media");
     return { success: "Image uploaded successfully." };
   } catch (error) {
@@ -58,7 +57,7 @@ export async function deleteMedia(form: FormData) {
   const refs = await mediaReferences(tenant.id, id);
   if (refs.products || refs.brand || refs.content) throw new Error("Asset is in use; remove its associations first");
   await prisma.mediaAsset.delete({ where: { id: asset.id } });
-  await localStorage.delete(asset.storageKey).catch(() => {});
+  await mediaStorage.delete(asset.storageKey).catch(() => {});
   await audit(tenant.id, principal.userId, "media.deleted", "MediaAsset", id);
   revalidatePath("/dashboard/media");
 }

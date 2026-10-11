@@ -1,7 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
+import type { S3Client } from "@aws-sdk/client-s3";
 vi.mock("server-only", () => ({}));
-import { localStorage, MAX_UPLOAD_BYTES, newStorageKey, optimizeUpload } from "./media";
+import { createS3MediaStorage, localStorage, MAX_UPLOAD_BYTES, MediaObjectMissingError, MediaStorageConfigurationError, newStorageKey, optimizeUpload, putWithRollback, selectMediaStorage } from "./media";
+
+function fakeS3() {
+  const objects = new Map<string, Uint8Array>();
+  const send = vi.fn(async (command: { constructor: { name: string }; input: { Key?: string; Body?: Uint8Array } }) => {
+    const key = String(command.input.Key);
+    if (command.constructor.name === "PutObjectCommand") { objects.set(key, command.input.Body!); return {}; }
+    if (command.constructor.name === "GetObjectCommand") {
+      const body = objects.get(key);
+      if (!body) throw Object.assign(new Error("missing"), { name: "NoSuchKey", $metadata: { httpStatusCode: 404 } });
+      return { Body: { transformToByteArray: async () => body } };
+    }
+    if (command.constructor.name === "HeadObjectCommand") {
+      if (!objects.has(key)) throw Object.assign(new Error("missing"), { name: "NotFound", $metadata: { httpStatusCode: 404 } });
+      return {};
+    }
+    if (command.constructor.name === "DeleteObjectCommand") { objects.delete(key); return {}; }
+    throw new Error("Unexpected command");
+  });
+  return { objects, send, client: { send } as unknown as S3Client };
+}
+
+const s3Environment = {
+  ADASH_MEDIA_DRIVER: "s3", ADASH_MEDIA_BUCKET: "sites-staging", ADASH_MEDIA_ENDPOINT: "https://example.r2.cloudflarestorage.com",
+  ADASH_MEDIA_REGION: "auto", ADASH_MEDIA_ACCESS_KEY_ID: "test-access", ADASH_MEDIA_SECRET_ACCESS_KEY: "test-secret"
+};
 
 describe("secure image upload parsing", () => {
   it("rejects fake extension, HTML, JavaScript, corrupt image, oversized input and SVG", async () => {
@@ -46,5 +72,28 @@ describe("secure image upload parsing", () => {
       await localStorage.delete(key);
     }
     expect(await localStorage.exists(key)).toBe(false);
+  });
+  it("puts, gets, checks and deletes objects through the S3-compatible provider", async () => {
+    const fake = fakeS3();
+    const storage = createS3MediaStorage(s3Environment, fake.client);
+    const key = "tenant-a/0123456789abcdef0123456789abcdef.webp";
+    await storage.put(key, Buffer.from("durable image"));
+    expect(await storage.exists(key)).toBe(true);
+    expect((await storage.get(key)).toString()).toBe("durable image");
+    await storage.delete(key);
+    expect(await storage.exists(key)).toBe(false);
+    await expect(storage.get(key)).rejects.toBeInstanceOf(MediaObjectMissingError);
+  });
+  it("fails clearly when S3 configuration is missing or invalid", async () => {
+    expect(() => createS3MediaStorage({ ADASH_MEDIA_BUCKET: "only-a-bucket" })).toThrow(MediaStorageConfigurationError);
+    expect(() => createS3MediaStorage({ ...s3Environment, ADASH_MEDIA_ENDPOINT: "http://insecure.example" })).toThrow("HTTPS");
+    await expect(selectMediaStorage({ NODE_ENV: "production", ADASH_MEDIA_DRIVER: "s3" }).exists("tenant/key.webp")).rejects.toBeInstanceOf(MediaStorageConfigurationError);
+  });
+  it("removes the uploaded object when MediaAsset creation fails", async () => {
+    const fake = fakeS3();
+    const storage = createS3MediaStorage(s3Environment, fake.client);
+    const key = "tenant-a/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp";
+    await expect(putWithRollback(storage, key, Buffer.from("image"), async () => { throw new Error("database unavailable"); })).rejects.toThrow("database unavailable");
+    expect(await storage.exists(key)).toBe(false);
   });
 });
