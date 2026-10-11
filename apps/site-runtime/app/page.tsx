@@ -40,7 +40,7 @@ async function loadSite() {
     if (section.type === "footer") return { ...section, links: [...section.links, ...([ ["Instagram", business.instagramUrl], ["Facebook", business.facebookUrl], ["TikTok", business.tiktokUrl] ] as const).filter(([, href]) => Boolean(href)).map(([label, href]) => ({ label, href: href! }))].slice(0, 8) };
     return section;
   });
-  return { tenant, business, brand, site, theme, sections: entitledSections(hydrated, features).filter(section => section.type !== "whatsappCta" || Boolean(whatsapp)), countryName, whatsapp };
+  return { tenant, business, brand, site, theme, sections: entitledSections(hydrated, features).filter(section => section.type !== "whatsappCta" || Boolean(whatsapp)), countryName, whatsapp, productsEnabled: features.includes("products") };
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -55,5 +55,5 @@ export default async function Home() {
   const site = await loadSite();
   if (!site) notFound();
   const whatsappHref = site.whatsapp ? `https://wa.me/${site.whatsapp.slice(1)}?text=${encodeURIComponent(`Hi ${site.business.displayName}, I'd like to get in touch.`)}` : null;
-  return <div style={themeVariables(site.theme) as CSSProperties}><TemplatePage sections={site.sections} context={{ businessName: site.business.displayName, countryName: site.countryName, currencyCode: site.tenant.currencyCode, locale: site.tenant.locale, logoUrl: site.brand?.logoUrl, whatsappBasket: Boolean(site.whatsapp), contact: { email: site.business.email, phone: site.business.phone, whatsappHref } }} /></div>;
+  return <div style={themeVariables(site.theme) as CSSProperties}><TemplatePage sections={site.sections} context={{ businessName: site.business.displayName, countryName: site.countryName, currencyCode: site.tenant.currencyCode, locale: site.tenant.locale, logoUrl: site.brand?.logoUrl, whatsappBasket: Boolean(site.whatsapp), productsEnabled: site.productsEnabled, contact: { email: site.business.email, phone: site.business.phone, whatsappHref } }} /></div>;
 }

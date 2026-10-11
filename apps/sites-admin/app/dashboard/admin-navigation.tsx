@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 type NavigationLink = { href: string; label: string };
-type Props = { tenantName: string; email: string; role: string; links: NavigationLink[]; logout: () => Promise<void> };
+type Props = { tenantName: string; email: string; role: string; links: NavigationLink[] };
 
 function isActiveRoute(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
@@ -18,11 +18,11 @@ function NavigationLinks({ links, pathname, onNavigate }: { links: NavigationLin
   })}</nav>;
 }
 
-function Account({ email, role, logout }: Pick<Props, "email" | "role" | "logout">) {
-  return <div className="account"><small>{email} · {role.replaceAll("_", " ")}</small><form action={logout}><button className="text-button">Log out</button></form></div>;
+function Account({ email, role }: Pick<Props, "email" | "role">) {
+  return <div className="account"><small>{email} · {role.replaceAll("_", " ")}</small><form action="/auth/logout" method="post"><button className="text-button">Log out</button></form></div>;
 }
 
-export function AdminNavigation({ tenantName, email, role, links, logout }: Props) {
+export function AdminNavigation({ tenantName, email, role, links }: Props) {
   const pathname = usePathname();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -35,7 +35,7 @@ export function AdminNavigation({ tenantName, email, role, links, logout }: Prop
   return <>
     <aside className="sidebar desktop-sidebar">
       <Link className="brandmark" href="/dashboard">A’DASH <span>SITES</span></Link><p>{tenantName}</p>
-      <NavigationLinks links={links} pathname={pathname} /><Account email={email} role={role} logout={logout} />
+      <NavigationLinks links={links} pathname={pathname} /><Account email={email} role={role} />
     </aside>
     <header className="mobile-admin-header">
       <Link className="brandmark" href="/dashboard">A’DASH <span>SITES</span></Link><span className="mobile-tenant-name">{tenantName}</span>
@@ -44,7 +44,7 @@ export function AdminNavigation({ tenantName, email, role, links, logout }: Prop
     <dialog ref={dialogRef} id="mobile-admin-navigation" className="mobile-nav-dialog" aria-labelledby="mobile-nav-title" onClick={(event) => { if (event.target === event.currentTarget) closeDrawer(); }} onClose={() => { setOpen(false); document.body.classList.remove("mobile-nav-open"); menuButtonRef.current?.focus(); }}>
       <div className="mobile-nav-panel">
         <div className="mobile-nav-heading"><div><span id="mobile-nav-title" className="brandmark">A’DASH <span>SITES</span></span><p>{tenantName}</p></div><button className="menu-close" type="button" aria-label="Close navigation" onClick={closeDrawer}>×</button></div>
-        <NavigationLinks links={links} pathname={pathname} onNavigate={closeDrawer} /><Account email={email} role={role} logout={logout} />
+        <NavigationLinks links={links} pathname={pathname} onNavigate={closeDrawer} /><Account email={email} role={role} />
       </div>
     </dialog>
   </>;

@@ -29,9 +29,11 @@ describe("catalogue safety", () => {
     const findFirst = vi.fn(async (args: { where: Record<string, unknown> }) => { void args; return null; });
     const db = { product: { findMany, findFirst }, productCategory: { findMany }, businessLocation: { findMany } } as unknown as PrismaClient;
     await catalogue("tenant-a", db).products(true);
+    await catalogue("tenant-a", db).publicProducts();
     await catalogue("tenant-a", db).productById("tenant-b-product");
     await catalogue("tenant-a", db).publicBySlug("other-product");
     expect(findMany.mock.calls[0][0].where).toEqual({ tenantId: "tenant-a", status: "ACTIVE" });
+    expect(findMany.mock.calls[1][0].where).toEqual({ tenantId: "tenant-a", status: "ACTIVE", OR: [{ categoryId: null }, { category: { active: true } }] });
     expect(findFirst.mock.calls[0][0].where).toEqual({ tenantId: "tenant-a", id: "tenant-b-product" });
     expect(findFirst.mock.calls[1][0].where).toEqual({ tenantId: "tenant-a", slug: "other-product", status: "ACTIVE" });
   });

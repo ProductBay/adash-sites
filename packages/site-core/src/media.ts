@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
+import sharp, { type Metadata } from "sharp";
 import { prisma } from "./index";
 
 export interface MediaStorage {
@@ -28,14 +28,31 @@ export const localStorage: MediaStorage = {
 };
 
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+export class MediaUploadError extends Error {
+  constructor(public readonly code: "size" | "unsupported" | "unreadable" | "dimensions", message: string) {
+    super(message);
+    this.name = "MediaUploadError";
+  }
+}
 export async function optimizeUpload(data: Buffer, declaredType: string) {
-  if (data.length === 0 || data.length > MAX_UPLOAD_BYTES) throw new Error("Image must be 1 byte to 8 MB");
-  if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(declaredType)) throw new Error("Unsupported image type");
+  if (data.length === 0 || data.length > MAX_UPLOAD_BYTES) throw new MediaUploadError("size", "Image exceeds the 8 MB limit");
+  // Browser MIME data is only a hint. Sharp's decoded format is authoritative.
+  void declaredType;
   const processor = sharp(data, { failOn: "error", limitInputPixels: 40_000_000 });
-  const info = await processor.metadata();
-  const formats: Record<string, string> = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp", avif: "image/avif" };
-  const expected = formats[info.format ?? ""];
-  if (expected !== declaredType || !info.width || !info.height || info.width > 10000 || info.height > 10000) throw new Error("Invalid image data or dimensions");
+  let info: Metadata;
+  try {
+    info = await processor.metadata();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/pixel limit/i.test(message)) throw new MediaUploadError("dimensions", "Image exceeds the 40 million pixel limit");
+    throw new MediaUploadError("unreadable", "That image could not be read");
+  }
+  if (!(["jpeg", "png", "webp", "avif"] as Array<string | undefined>).includes(info.format)) {
+    throw new MediaUploadError("unsupported", "This image format is not supported");
+  }
+  if (!info.width || !info.height || info.width > 10000 || info.height > 10000) {
+    throw new MediaUploadError("dimensions", "Image dimensions must not exceed 10,000 × 10,000 pixels");
+  }
   const normalized = await processor.rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true }).webp({ quality: 82, effort: 5 }).toBuffer({ resolveWithObject: true });
   return { body: normalized.data, width: normalized.info.width, height: normalized.info.height, mimeType: "image/webp" };
 }

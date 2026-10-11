@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import { MediaKind } from "@prisma/client";
 import { prisma } from "@adash/site-core";
-import { localStorage, mediaReferences, mediaUrl, newStorageKey, optimizeUpload } from "@adash/site-core/media";
+import { localStorage, MediaUploadError, mediaReferences, mediaUrl, newStorageKey, optimizeUpload } from "@adash/site-core/media";
 import { dashboardContext as context, audit } from "./context";
 
 async function secure(permission: "brand.update" | "product.update" | "content.update" | "media.manage") {
@@ -14,20 +14,32 @@ async function secure(permission: "brand.update" | "product.update" | "content.u
 }
 const field = (form: FormData, name: string) => String(form.get(name) ?? "").trim();
 
-export async function uploadMedia(form: FormData) {
-  const { tenant, principal } = await secure("media.manage");
-  const file = form.get("image");
-  if (!(file instanceof File)) throw new Error("Choose an image");
-  if (file.size > 8 * 1024 * 1024) throw new Error("Image exceeds 8 MB");
-  const processed = await optimizeUpload(Buffer.from(await file.arrayBuffer()), file.type);
-  const kind = Object.values(MediaKind).includes(field(form, "kind") as MediaKind) ? field(form, "kind") as MediaKind : MediaKind.IMAGE;
-  const storageKey = newStorageKey(tenant.id);
-  await localStorage.put(storageKey, processed.body);
+export type UploadMediaState = { error?: string; success?: string };
+
+export async function uploadMedia(_state: UploadMediaState, form: FormData): Promise<UploadMediaState> {
   try {
-    const asset = await prisma.mediaAsset.create({ data: { tenantId: tenant.id, uploadedByUserId: principal.userId, kind, storageKey, mimeType: processed.mimeType, originalFilename: file.name.replace(/[\\/\x00-\x1f]/g, "_").slice(0, 180), sizeBytes: processed.body.length, width: processed.width, height: processed.height, altText: field(form, "altText").slice(0, 180) } });
-    await audit(tenant.id, principal.userId, "media.uploaded", "MediaAsset", asset.id);
-  } catch (error) { await localStorage.delete(storageKey); throw error; }
-  revalidatePath("/dashboard/media");
+    const { tenant, principal } = await secure("media.manage");
+    const file = form.get("image");
+    if (!(file instanceof File) || file.size === 0) return { error: "Choose an image to upload." };
+    const processed = await optimizeUpload(Buffer.from(await file.arrayBuffer()), file.type);
+    const kind = Object.values(MediaKind).includes(field(form, "kind") as MediaKind) ? field(form, "kind") as MediaKind : MediaKind.IMAGE;
+    const storageKey = newStorageKey(tenant.id);
+    await localStorage.put(storageKey, processed.body);
+    try {
+      const asset = await prisma.mediaAsset.create({ data: { tenantId: tenant.id, uploadedByUserId: principal.userId, kind, storageKey, mimeType: processed.mimeType, originalFilename: file.name.replace(/[\\/\x00-\x1f]/g, "_").slice(0, 180), sizeBytes: processed.body.length, width: processed.width, height: processed.height, altText: field(form, "altText").slice(0, 180) } });
+      await audit(tenant.id, principal.userId, "media.uploaded", "MediaAsset", asset.id);
+    } catch (error) { await localStorage.delete(storageKey); throw error; }
+    revalidatePath("/dashboard/media");
+    return { success: "Image uploaded successfully." };
+  } catch (error) {
+    if (error instanceof MediaUploadError) {
+      if (error.code === "size") return { error: "Image exceeds the 8 MB limit." };
+      if (error.code === "unsupported") return { error: "This image format is not supported." };
+      if (error.code === "unreadable") return { error: "That image could not be read. Try exporting it as PNG or JPEG." };
+      return { error: error.message };
+    }
+    return { error: "Image upload failed. Please try again." };
+  }
 }
 export async function updateMediaAlt(form: FormData) {
   const { tenant, principal } = await secure("media.manage");

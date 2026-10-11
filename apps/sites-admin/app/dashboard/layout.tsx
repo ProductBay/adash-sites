@@ -1,18 +1,8 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { SESSION_COOKIE, can, revokeSession } from "@adash/site-auth";
+import { can } from "@adash/site-auth";
 import { dashboardContext } from "../context";
 import { AdminHelpDrawer } from "./help-drawer";
 import { AdminNavigation } from "./admin-navigation";
 import { AdminPlatformFooter } from "./admin-platform-footer";
-
-async function logout() {
-  "use server";
-  const jar = await cookies();
-  await revokeSession(jar.get(SESSION_COOKIE)?.value);
-  jar.delete(SESSION_COOKIE);
-  redirect("/login");
-}
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { tenant, principal } = await dashboardContext();
@@ -30,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const visibleLinks = links.filter(([, , show]) => show).map(([href, label]) => ({ href, label }));
 
   return <div className="dashboard">
-    <AdminNavigation tenantName={tenant.name} email={principal.email} role={principal.role} links={visibleLinks} logout={logout} />
+    <AdminNavigation tenantName={tenant.name} email={principal.email} role={principal.role} links={visibleLinks} />
     <div className="workspace">
       {tenant.status === "SUSPENDED" && <div role="status" className="panel"><strong>Site temporarily unavailable</strong><p>Your information remains available to review. Publishing and changes are paused. Please contact A’Dash support for restoration.</p></div>}
       {children}<AdminPlatformFooter /><AdminHelpDrawer />
