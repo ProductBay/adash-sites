@@ -89,5 +89,5 @@ it("defines the initial markets and entitlement vocabulary", () => {
     ["GY", "GYD", "en-GY", "+592"], ["JM", "JMD", "en-JM", "+1-876"],
     ["TT", "TTD", "en-TT", "+1-868"], ["BB", "BBD", "en-BB", "+1-246"]
   ]);
-  expect(featureKeys).toEqual(["products", "whatsapp_ordering", "locations", "testimonials", "basic_inventory", "inventra", "commerce", "payments", "delivery", "analytics"]);
+  expect(featureKeys).toEqual(["products", "whatsapp_ordering", "locations", "testimonials", "basic_inventory", "inventra", "commerce", "payments", "delivery", "analytics", "white_label"]);
 });

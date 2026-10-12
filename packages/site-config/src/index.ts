@@ -8,9 +8,14 @@ export const countryConfig = {
 } as const;
 export type CountryCode = keyof typeof countryConfig;
 
-export const featureKeys = ["products", "whatsapp_ordering", "locations", "testimonials", "basic_inventory", "inventra", "commerce", "payments", "delivery", "analytics"] as const;
+export const featureKeys = ["products", "whatsapp_ordering", "locations", "testimonials", "basic_inventory", "inventra", "commerce", "payments", "delivery", "analytics", "white_label"] as const;
 export const featureKeySchema = z.enum(featureKeys);
 export type FeatureKey = z.infer<typeof featureKeySchema>;
+
+// Entitlements are granted by the platform control plane, not tenant content forms.
+export function showPoweredByAdash(features: readonly FeatureKey[]): boolean {
+  return !features.includes("white_label");
+}
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url().startsWith("postgresql://"),

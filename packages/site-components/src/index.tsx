@@ -2,6 +2,7 @@ import { SafeImage as Image } from "./safe-image";
 import type { ReactNode } from "react";
 import type { ProductPreview, SiteSection } from "@adash/site-templates";
 import { formatCurrency, sectionHasContent } from "@adash/site-templates";
+export { PoweredByAdashBadge } from "./powered-by-adash-badge";
 
 type Of<T extends SiteSection["type"]> = Extract<SiteSection, { type: T }>;
 type ImageData = { src: string; alt: string };
