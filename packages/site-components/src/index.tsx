@@ -1,7 +1,7 @@
-import Image from "next/image";
+import { SafeImage as Image } from "./safe-image";
 import type { ReactNode } from "react";
 import type { ProductPreview, SiteSection } from "@adash/site-templates";
-import { formatCurrency } from "@adash/site-templates";
+import { formatCurrency, sectionHasContent } from "@adash/site-templates";
 
 type Of<T extends SiteSection["type"]> = Extract<SiteSection, { type: T }>;
 type ImageData = { src: string; alt: string };
@@ -111,6 +111,7 @@ export function SiteHeader({ businessName, sections, logoUrl, whatsappBasket, pr
 }
 
 export function TemplatePage({ sections, context }: { sections: SiteSection[]; context: Context }) {
+  sections = sections.filter(sectionHasContent);
   const rendered: ReactNode[] = [];
   for (const section of sections) {
     let content: ReactNode = null;

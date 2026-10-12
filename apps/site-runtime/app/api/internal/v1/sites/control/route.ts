@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { countryConfig, featureKeySchema, featureKeys } from "@adash/site-config";
 import { normalizeHostname, prisma } from "@adash/site-core";
+import { defaultTenantSections } from "@adash/site-templates";
 import { commercialStatuses, getEffectiveTenantLicence, operationalStatus } from "@adash/site-core/commercial";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
           await tx.tenantDomain.create({ data: { tenantId, hostname, isPrimary: true, status: "VERIFIED", verifiedAt: new Date() } });
           await tx.businessProfile.create({ data: { tenantId, displayName: parsed.businessName, countryCode: parsed.countryCode } });
           await tx.brandConfiguration.create({ data: { tenantId } });
-          await tx.siteConfiguration.create({ data: { tenantId, templateKey: parsed.templateKey, themeKey: parsed.themeKey, published: false } });
+          await tx.siteConfiguration.create({ data: { tenantId, templateKey: parsed.templateKey, themeKey: parsed.themeKey, homeSections: defaultTenantSections(parsed.businessName, parsed.templateKey) as Prisma.InputJsonValue, published: false } });
         }
       } else {
         const tenant = await tx.tenant.findUnique({ where: { id: parsed.tenantId } });

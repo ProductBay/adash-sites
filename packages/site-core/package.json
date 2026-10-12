@@ -1,1 +1,1 @@
-{"name":"@adash/site-core","private":true,"exports":{".":"./src/index.ts","./catalogue":"./src/catalogue.ts","./media":"./src/media.ts","./whatsapp":"./src/whatsapp.ts","./commercial":"./src/commercial.ts"}}
+{"name":"@adash/site-core","private":true,"exports":{".":"./src/index.ts","./catalogue":"./src/catalogue.ts","./media":"./src/media.ts","./homepage":"./src/homepage.ts","./whatsapp":"./src/whatsapp.ts","./commercial":"./src/commercial.ts"}}
